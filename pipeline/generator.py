@@ -15,7 +15,7 @@ Given OCR text from handwritten pages:
 9. If a word is genuinely uncertain, use [unclear] instead of silently inventing it.
 10. Return a clean, ready-to-edit assignment.
 """
-
+# put open ai api key in .env file and load it using python-dotenv
 def generate_assignment(text: str) -> str:
     if not OPENAI_API_KEY:
         raise RuntimeError(
