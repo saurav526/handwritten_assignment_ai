@@ -1,96 +1,329 @@
 import os
+
 import streamlit as st
 from PIL import Image
+
 from pipeline.preprocessing import preprocess_image
 from pipeline.ocr import extract_text
 from pipeline.generator import generate_assignment
+
 from utils.docx_generator import create_docx
 
-st.set_page_config(page_title="Handwritten Assignment AI", page_icon="📝", layout="wide")
 
-st.title("📝 Handwritten Assignment AI")
-st.caption("Upload handwritten pages → OCR → AI analysis → complete assignment → DOCX")
+# --------------------------------------------------
+# Streamlit configuration
+# --------------------------------------------------
 
-files = st.file_uploader(
+st.set_page_config(
+    page_title="Handwritten Assignment AI",
+    page_icon="📝",
+    layout="wide"
+)
+
+
+# --------------------------------------------------
+# Header
+# --------------------------------------------------
+
+st.title(
+    "📝 Handwritten Assignment AI"
+)
+
+st.write(
+    "Upload handwritten assignment pages, "
+    "extract the content using OCR, "
+    "generate a clean assignment with AI, "
+    "and download it as DOCX."
+)
+
+
+# --------------------------------------------------
+# Upload
+# --------------------------------------------------
+
+uploaded_files = st.file_uploader(
     "Upload handwritten assignment pages",
-    type=["png", "jpg", "jpeg", "webp"],
+    type=[
+        "png",
+        "jpg",
+        "jpeg",
+        "webp"
+    ],
     accept_multiple_files=True
 )
 
-if files:
-    st.subheader("Uploaded Pages")
-    cols = st.columns(3)
 
-    for i, uploaded in enumerate(files):
-        image = Image.open(uploaded).convert("RGB")
-        with cols[i % 3]:
-            st.image(image, caption=f"Page {i + 1}", use_container_width=True)
+# --------------------------------------------------
+# Uploaded files
+# --------------------------------------------------
 
-    if st.button("🔍 Analyze Assignment", type="primary"):
-        os.makedirs("data/uploads", exist_ok=True)
+if uploaded_files:
+
+    st.subheader(
+        "Uploaded Pages"
+    )
+
+    columns = st.columns(3)
+
+    for index, uploaded_file in enumerate(
+        uploaded_files
+    ):
+
+        image = Image.open(
+            uploaded_file
+        ).convert("RGB")
+
+        with columns[
+            index % 3
+        ]:
+
+            st.image(
+                image,
+                caption=f"Page {index + 1}",
+                use_container_width=True
+            )
+
+
+    # --------------------------------------------------
+    # Analyze button
+    # --------------------------------------------------
+
+    if st.button(
+        "🔍 Analyze Assignment",
+        type="primary"
+    ):
+
+        os.makedirs(
+            "data/uploads",
+            exist_ok=True
+        )
 
         all_text = []
-        progress = st.progress(0)
 
-        for i, uploaded in enumerate(files):
-            image = Image.open(uploaded).convert("RGB")
-            processed = preprocess_image(image)
+        progress = st.progress(
+            0
+        )
 
-            path = f"data/uploads/page_{i + 1}.png"
-            processed.save(path)
+        status = st.empty()
+
+
+        # Process every page
+        for index, uploaded_file in enumerate(
+            uploaded_files
+        ):
+
+            status.write(
+                f"Processing page {index + 1}..."
+            )
+
+            image = Image.open(
+                uploaded_file
+            ).convert("RGB")
+
+
+            # Preprocessing
+            processed_image = (
+                preprocess_image(
+                    image
+                )
+            )
+
+
+            # Save processed image
+            image_path = (
+                f"data/uploads/"
+                f"page_{index + 1}.png"
+            )
+
+            processed_image.save(
+                image_path
+            )
+
+
+            # OCR
+            try:
+
+                text = extract_text(
+                    image_path
+                )
+
+            except Exception as error:
+
+                text = (
+                    f"[OCR failed on page "
+                    f"{index + 1}: {error}]"
+                )
+
+
+            all_text.append(
+                f"--- PAGE {index + 1} ---\n"
+                f"{text}"
+            )
+
+
+            progress.progress(
+                (index + 1)
+                / len(uploaded_files)
+            )
+
+
+        # Combine all pages
+        extracted_text = "\n\n".join(
+            all_text
+        )
+
+
+        st.session_state[
+            "extracted_text"
+        ] = extracted_text
+
+
+        status.success(
+            "All pages processed."
+        )
+
+
+# --------------------------------------------------
+# OCR result
+# --------------------------------------------------
+
+if "extracted_text" in st.session_state:
+
+    st.divider()
+
+    st.subheader(
+        "📖 Extracted Handwritten Text"
+    )
+
+    edited_text = st.text_area(
+
+        "Review and correct OCR mistakes "
+        "before generating the assignment.",
+
+        value=st.session_state[
+            "extracted_text"
+        ],
+
+        height=400
+    )
+
+
+    st.session_state[
+        "extracted_text"
+    ] = edited_text
+
+
+    # --------------------------------------------------
+    # Generate assignment
+    # --------------------------------------------------
+
+    if st.button(
+        "✍️ Generate Complete Assignment",
+        type="primary"
+    ):
+
+        with st.spinner(
+            "AI is analyzing the assignment..."
+        ):
 
             try:
-                text = extract_text(path)
-            except Exception as e:
-                text = f"[OCR failed on page {i + 1}: {e}]"
 
-            all_text.append(f"--- PAGE {i + 1} ---\n{text}")
-            progress.progress((i + 1) / len(files))
+                result = generate_assignment(
+                    st.session_state[
+                        "extracted_text"
+                    ]
+                )
 
-        extracted = "\n\n".join(all_text)
-        st.session_state["extracted_text"] = extracted
+                st.session_state[
+                    "result"
+                ] = result
 
-    if "extracted_text" in st.session_state:
-        st.subheader("📖 Extracted Text")
-        edited_text = st.text_area(
-            "You can correct OCR mistakes before generation.",
-            st.session_state["extracted_text"],
-            height=350
-        )
-        st.session_state["extracted_text"] = edited_text
+                st.success(
+                    "Assignment generated successfully."
+                )
 
-        if st.button("✍️ Generate Complete Assignment"):
-            with st.spinner("Analyzing and generating..."):
-                try:
-                    result = generate_assignment(st.session_state["extracted_text"])
-                    st.session_state["result"] = result
-                except Exception as e:
-                    st.error(f"Generation failed: {e}")
+            except Exception as error:
 
-    if "result" in st.session_state:
-        st.subheader("✨ Generated Assignment")
-        result = st.text_area(
-            "Edit the final assignment if needed.",
-            st.session_state["result"],
-            height=500
-        )
-        st.session_state["result"] = result
+                st.error(
+                    f"Generation failed: {error}"
+                )
 
-        os.makedirs("output", exist_ok=True)
-        docx_path = "output/generated_assignment.docx"
 
-        create_docx(
-            title="Generated Assignment",
-            content=result,
-            output_path=docx_path
-        )
+# --------------------------------------------------
+# Generated assignment
+# --------------------------------------------------
 
-        with open(docx_path, "rb") as f:
-            st.download_button(
-                "📥 Download DOCX",
-                data=f,
-                file_name="generated_assignment.docx",
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+if "result" in st.session_state:
+
+    st.divider()
+
+    st.subheader(
+        "✨ Generated Assignment"
+    )
+
+
+    final_assignment = st.text_area(
+
+        "You can edit the generated assignment.",
+
+        value=st.session_state[
+            "result"
+        ],
+
+        height=600
+    )
+
+
+    st.session_state[
+        "result"
+    ] = final_assignment
+
+
+    # --------------------------------------------------
+    # Generate DOCX
+    # --------------------------------------------------
+
+    os.makedirs(
+        "output",
+        exist_ok=True
+    )
+
+
+    docx_path = (
+        "output/"
+        "generated_assignment.docx"
+    )
+
+
+    create_docx(
+
+        title="Generated Assignment",
+
+        content=final_assignment,
+
+        output_path=docx_path
+    )
+
+
+    # --------------------------------------------------
+    # Download
+    # --------------------------------------------------
+
+    with open(
+        docx_path,
+        "rb"
+    ) as file:
+
+        st.download_button(
+
+            label="📥 Download Assignment DOCX",
+
+            data=file,
+
+            file_name="generated_assignment.docx",
+
+            mime=(
+                "application/vnd.openxmlformats-"
+                "officedocument.wordprocessingml.document"
             )
-else:
-    st.info("Upload one or more handwritten pages to begin.")
+        )
