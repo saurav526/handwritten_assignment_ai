@@ -1,0 +1,9 @@
+streamlit
+opencv-python
+pillow
+numpy
+paddleocr
+paddlepaddle
+python-dotenv
+openai
+python-docx
