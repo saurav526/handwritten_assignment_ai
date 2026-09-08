@@ -1,7 +1,6 @@
 import os
 import streamlit as st
 from PIL import Image
-
 from pipeline.preprocessing import preprocess_image
 from pipeline.ocr import extract_text
 from pipeline.generator import generate_assignment
